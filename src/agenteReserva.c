@@ -62,8 +62,33 @@ int main(int argc, char **argv) {
     printf("Reserva %d: %s, %d, %d\n", i + 1, reservas[i].nombreFamilia, reservas[i].numPersonas, reservas[i].horaInicio);
     fflush(stdout);  // Asegura que el mensaje se imprima inmediatamente.
     int fd = open(arguments.pipeCrecibe, O_WRONLY);
-    write(fd, reservas[i], sizeof(Reserva));
-    close(fd);        
+    write(fd, &reservas[i], sizeof(Reserva));
+    close(fd);
+
+        printf("Esperando1\n");
+
+
+    char fifo[] = "/tmp/";
+    strcat(fifo,reservas[i].nombreFamilia);
+
+    printf("Fifo: %s",fifo);
+
+        printf("Esperando2\n");
+
+    int fd2 = open(fifo, O_RDONLY);
+        if (fd2 == -1) {
+            perror("open");
+            exit(EXIT_FAILURE);
+        }
+                printf("Esperando\n");
+
+        char aux[100];
+        int bytesRead = read(fd2, aux, sizeof(aux));
+        if(bytesRead>0){
+        printf("Respuesta: %s\n",bytesRead);
+        }
+        close(fd2);
+
 
 
 

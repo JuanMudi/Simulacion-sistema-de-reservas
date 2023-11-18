@@ -1,15 +1,16 @@
-GCC=gcc
-CFLAGS= -I ./include -lpthread ./include/*.c
+GCC := gcc
+CFLAGS := -I./include
+LDFLAGS := -lpthread
 
-PROGS = controller agent
+PROGS := controller agent
 
 all: $(PROGS)
 
-controller:
-	$(GCC) $(CFLAGS) -o controller ./src/controladorReserva.c
+controller: src/controladorReserva.c
+	$(GCC) $(CFLAGS) -o controller src/controladorReserva.c src/argumentsController.c $(LDFLAGS)
 
-agent:
-	$(GCC) $(CFLAGS) -o agent ./src/agenteReserva.c
+agent: src/agenteReserva.c
+	$(GCC) $(CFLAGS) -o agent src/agenteReserva.c src/argumentsAgent.c $(LDFLAGS)
 
 clean:
-	rm -f controller agent
+	rm -f $(PROGS)
