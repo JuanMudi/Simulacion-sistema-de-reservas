@@ -2,3 +2,4 @@ Munoz,3,6
 Zuluaga,8,10
 Perez,4,4
 Rojas,10,10
+Castro,23,23
