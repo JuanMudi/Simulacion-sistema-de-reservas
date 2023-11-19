@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <string.h>
+#include <pthread.h>
 
 
 #include "argumentsController.h"
@@ -40,6 +41,8 @@ int buscarNuevoHorario(Reserva reservas[], int numReservas, int capacidadMax, in
 void agregarReserva(Reserva **reservas, int *numReservas, Reserva nuevaReserva);
 bool verificarReserva(Reserva reservas[], int numReservas, int capacidadMax, Reserva nuevaReserva, int horaFinal);
 void enviarEstado(char *status,Reserva reserva);
+void* manejarSolicitudReserva(void* arg);
+void generarReporte();
 
 
 

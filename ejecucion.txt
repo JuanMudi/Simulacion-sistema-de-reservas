@@ -1,0 +1,2 @@
+./controller -i 8 -f 19 -s 5 -t 20 -p /tmp/pruebas
+./agent -s Reserva1 -a reserva.txt -p /tmp/pruebas

@@ -5,12 +5,22 @@ struct arguments arguments;
 
 //VARIABLES GLOBALES
 int horaActual = 0;
+Reserva **reservas;
+int cantReservas = 0;
+Reserva* reserva;
+int solicitudesNegadas=0;
+int solicitudesAceptadas=0;
+int solicitudesReprogramadas=0;
+
+
+
+
 
 
 int main(int argc, char **argv) {
-    Reserva **reservas = malloc(0);
+    reservas = malloc(0);
+    reserva = malloc(sizeof(Reserva));
 
-    int cantReservas = 0;
     init_arguments(argc, argv, &arguments);
     if(arguments.horaInicio == -1 || 
     arguments.horaFinal == -1 || 
@@ -43,27 +53,41 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
-    Reserva reserva;
 
     while (1) {
-        int bytesRead = read(fd, &reserva, sizeof(Reserva));
-        if(bytesRead>0){
-            if(bytesRead<sizeof(Reserva))
+    int bytesRead = read(fd, reserva, sizeof(Reserva));
+
+    if (bytesRead > 0) {
+        if(bytesRead<sizeof(Reserva))
             {
-            printf("Conexión con: %s\n",reserva.nombreFamilia);
+            printf("Conexión con: %s\n",reserva->nombreFamilia);
+            char fifo[128] = "/tmp/";
+    strcat(fifo,reserva->nombreFamilia);
+
+    if (mkfifo(fifo, 0666) == -1) {
+        if (errno != EEXIST) {
+            perror("mkfifo");
+            exit(EXIT_FAILURE);
+        }
+    }
+    int fd = open(fifo, O_WRONLY);
+    char aux2[10];
+    sprintf(aux2,"%d",horaActual);
+    write(fd,aux2,10);
+    close(fd);
             }
             else{
             printf("--------------------------------------------------------------\n");
-            printf("Reserva:\nFamilia: %s\nHora Inicio:%d\nCantidad personas: %d\n",reserva.nombreFamilia,reserva.horaInicio,reserva.numPersonas);
+            printf("Reserva:\nFamilia: %s\nHora Inicio:%d\nCantidad personas: %d\n",reserva->nombreFamilia,reserva->horaInicio,reserva->numPersonas);
             printf("--------------------------------------------------------------\n");
-            bool esPosible = esPosibleReserva(reservas,&cantReservas,arguments.totalPersonas,reserva,arguments.horaFinal);
-            esPosible ? printf("-> Es posible la reserva\n") : printf("-> No es posible la reserva\n");
-
+            pthread_t threadId;
+            if (pthread_create(&threadId, NULL, manejarSolicitudReserva, NULL) != 0) {
+            perror("Failed to create thread");
+            }
         }
-        }
-
+        
     }
-
+}
     close(fd);
     unlink(arguments.pipeCrecibe);
     return 0;
@@ -77,7 +101,10 @@ void manejadorSenal(int signum) {
 
 void simularTiempo() {
     if(horaActual >= arguments.horaFinal)
+    {
+        generarReporte(*reservas);
         exit(0);
+    }
     horaActual +=1;
     printf("->HORA ACTUAL<-: %d hrs\n",horaActual);
     return;
@@ -100,26 +127,31 @@ void enviarTiempo(const char* pipe,const char* nombre) {
 bool esPosibleReserva(Reserva **reservas, int *numReservas, int capacidadMax, Reserva nuevaReserva, int horaFinal) {
     if (verificarReserva(*reservas, *numReservas, capacidadMax, nuevaReserva, horaFinal)) {
         agregarReserva(reservas, numReservas, nuevaReserva);
+        solicitudesAceptadas++;
         enviarEstado("RESERVA ACEPTADA",nuevaReserva);
         return true;
     } else {
         // Intentar encontrar un nuevo horario
         int nuevoHorario = buscarNuevoHorario(*reservas, *numReservas, capacidadMax, horaFinal, nuevaReserva.numPersonas);
         if (nuevoHorario != -1) {
+            
             nuevaReserva.horaInicio = nuevoHorario;
 
             printf("Nuevo Horario: %d", nuevoHorario);
             agregarReserva(reservas, numReservas, nuevaReserva);
-            char aux[] = "RESERVA ACEPTADA A LAS ";
+            char aux[100] = "RESERVA ACEPTADA A LAS ";
             char aux2[10];
             sprintf(aux2,"%d",nuevoHorario);
             strcat(aux,aux2);
+            solicitudesReprogramadas++;
             enviarEstado(aux,nuevaReserva);
 
             return true;
         }
     }
 
+    solicitudesNegadas++;
+    enviarEstado("RESERVA NEGADA",nuevaReserva);
     return false; // No fue posible hacer la reserva
 }
 bool verificarReserva(Reserva reservas[], int numReservas, int capacidadMax, Reserva nuevaReserva, int horaFinal) {
@@ -142,7 +174,6 @@ bool verificarReserva(Reserva reservas[], int numReservas, int capacidadMax, Res
             return false; // No hay espacio o la hora es fuera del horario
         }
     }
-
     return true; // Es posible hacer la reserva
 }
 
@@ -184,9 +215,10 @@ void agregarReserva(Reserva **reservas, int *numReservas, Reserva nuevaReserva) 
 }
 void enviarEstado(char *status, Reserva reserva)
 {
-    char fifo[] = "/tmp/";
+    char fifo[128] = "/tmp/";
     strcat(fifo,reserva.nombreFamilia);
-    printf("Fifo: %s",fifo);
+    printf("\nFifo: %s\n",fifo);    printf("Fifo: %s\n",fifo);
+
 
     if (mkfifo(fifo, 0666) == -1) {
         if (errno != EEXIST) {
@@ -195,12 +227,100 @@ void enviarEstado(char *status, Reserva reserva)
         }
     }
     
-    printf("Enviando Respuesta\n");
+    printf("Enviando Respuesta: %s\n",status);
     fflush(stdout);  // Asegura que el mensaje se imprima inmediatamente.
     int fd = open(fifo, O_WRONLY);
-    write(fd, status, sizeof(status));
+    write(fd, status,100);
     close(fd);
+    
+
+
 }
 
+
+void* manejarSolicitudReserva(void* arg) {
+    printf("\nENTRANDO A HILO\n");
+
+    // Lógica para procesar la reserva
+    bool esPosible = esPosibleReserva(reservas, &cantReservas, arguments.totalPersonas, *reserva, arguments.horaFinal);
+    esPosible ? printf("-> Es posible la reserva\n") : printf("-> No es posible la reserva\n");
+
+    // Limpieza y salida del hilo
+    printf("\nSALIENDO DEL HILO\n");
+    pthread_exit(NULL);
+}
+
+
+void generarReporte(Reserva reservas1[]) {
+    printf("--------------------------------------------------------------\n");
+    printf("GENERANDO REPORTE\n");
+    printf("--------------------------------------------------------------\n");
+
+    int maxPersonas = 0;
+    int minPersonas = INT_MAX;
+    int numHorasPico=0;
+    int numHorasMenosConcurridas=0;
+    int horasPico[arguments.horaFinal - arguments.horaInicio];
+    int horasMenosConcurridas[arguments.horaFinal - arguments.horaInicio];
+
+    int personasPorHora[24] = {0};
+
+    
+    // Encontrar el máximo y mínimo número de personas por hora
+    for (int i = 0; i < cantReservas; i++) {
+        for (int hora = reservas1[i].horaInicio; hora < reservas1[i].horaInicio + 2; hora++) {
+            personasPorHora[hora] += reservas1[i].numPersonas;
+            printf("Agregando en: %d -> %d\n",hora, reservas1[i].numPersonas);
+
+        }
+    }
+
+    // Encuentra el máximo y el mínimo número de personas
+for (int i = arguments.horaInicio; i < arguments.horaFinal; ++i) {
+
+    if (personasPorHora[i] > maxPersonas) {
+
+        maxPersonas = personasPorHora[i];
+
+    }
+    if (personasPorHora[i] < minPersonas) {
+        minPersonas = personasPorHora[i];
+    }
+}
+
+
+
+// Identifica las horas pico y menos concurridas
+for (int i = arguments.horaInicio; i < arguments.horaFinal; ++i) {
+
+    if (personasPorHora[i] == maxPersonas) {
+
+        horasPico[numHorasPico++] = i;
+
+    }
+    if (personasPorHora[i] == minPersonas) {
+
+        horasMenosConcurridas[numHorasMenosConcurridas++] = i;
+    }
+}
+
+    // Imprimir el reporte
+    printf("Reporte de Ocupación del Parque:\n");
+    printf("Horas Pico: ");
+    for (int i = 0; i < numHorasPico; i++) {
+        printf("%d ", horasPico[i]);
+    }
+    printf("\n");
+
+    printf("Horas con Menor Cantidad de Personas: ");
+    for (int i = 0; i < numHorasMenosConcurridas; i++) {
+        printf("%d ", horasMenosConcurridas[i]);
+    }
+    printf("\n");
+
+    printf("Número de Solicitudes Negadas: %d\n", solicitudesNegadas);
+    printf("Número de Solicitudes Aceptadas: %d\n", solicitudesAceptadas);
+    printf("Número de Solicitudes Reprogramadas: %d\n", solicitudesReprogramadas);
+}
 
 

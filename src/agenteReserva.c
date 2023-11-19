@@ -2,6 +2,7 @@
 #include "agenteReserva.h"
 
 struct arguments arguments;
+int horaActual;
 
 int main(int argc, char **argv) {
     init_agent_arguments(argc, argv, &arguments);
@@ -59,35 +60,44 @@ int main(int argc, char **argv) {
 
     // Enviar las reservas
     for (int i = 0; i < count; i++) {
+        if(reservas[i].horaInicio<horaActual)
+            continue;
     printf("Reserva %d: %s, %d, %d\n", i + 1, reservas[i].nombreFamilia, reservas[i].numPersonas, reservas[i].horaInicio);
     fflush(stdout);  // Asegura que el mensaje se imprima inmediatamente.
     int fd = open(arguments.pipeCrecibe, O_WRONLY);
     write(fd, &reservas[i], sizeof(Reserva));
     close(fd);
 
-        printf("Esperando1\n");
 
 
-    char fifo[] = "/tmp/";
+    char fifo[128] = "/tmp/";
     strcat(fifo,reservas[i].nombreFamilia);
+    printf("Fifo: %s\n",fifo);
 
-    printf("Fifo: %s",fifo);
 
-        printf("Esperando2\n");
 
-    int fd2 = open(fifo, O_RDONLY);
+    if (mkfifo(fifo, 0666) == -1) {
+        if (errno != EEXIST) {
+            perror("mkfifo");
+            exit(EXIT_FAILURE);
+        }
+    };
+
+
+        int fd2 = open(fifo, O_RDONLY);
         if (fd2 == -1) {
             perror("open");
             exit(EXIT_FAILURE);
         }
-                printf("Esperando\n");
 
         char aux[100];
         int bytesRead = read(fd2, aux, sizeof(aux));
         if(bytesRead>0){
-        printf("Respuesta: %s\n",bytesRead);
+        printf("Respuesta: %s\n",aux);
         }
         close(fd2);
+
+        
 
 
 
@@ -109,5 +119,31 @@ void conectar(){
     int fd = open(arguments.pipeCrecibe, O_WRONLY);
     write(fd, arguments.nombre, sizeof(arguments.nombre));
     close(fd);
+
+
+    char fifo[128] = "/tmp/";;
+    strcat(fifo,arguments.nombre);
+
+    if (mkfifo(fifo, 0666) == -1) {
+        if (errno != EEXIST) {
+            perror("mkfifo");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+
+        int fd2 = open(fifo, O_RDONLY);
+        if (fd2 == -1) {
+            perror("open");
+            exit(EXIT_FAILURE);
+        };
+
+        char aux[10];
+        int bytesRead = read(fd2, aux, sizeof(aux));
+        if(bytesRead>0){
+        printf("Hora Actual: %s\n",aux);
+        }
+        close(fd2);
+        horaActual = atoi(aux);
 }
 
