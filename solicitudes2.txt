@@ -1,0 +1,3 @@
+Alonso,14,4
+Alzate,14,7
+Jimenez,8,2
